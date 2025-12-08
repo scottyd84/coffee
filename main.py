@@ -2,7 +2,7 @@
 
 import csv
 import random
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, redirect, render_template
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
@@ -107,7 +107,8 @@ def add_cafe():
         )
         db.session.add(new_cafe)
         db.session.commit()
-        return render_template('cafes.html')
+        # all_cafes = db.session.execute(db.select(Cafe).order_by(Cafe.name)).scalars().all()
+        return redirect('url_for("cafes")')
     return render_template('add.html', form=form)
 
 
