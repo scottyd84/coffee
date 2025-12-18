@@ -24,7 +24,7 @@ wheels/
 *.egg
 
 # Flask
-# instance/
+instance/
 .webassets-cache
 
 # Environment variables
@@ -41,3 +41,4 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
+instance/cafes.db

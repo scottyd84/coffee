@@ -1,6 +1,7 @@
 # %%
 
 import random
+from typing import Literal
 from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 from flask_bootstrap import Bootstrap5
 from flask_sqlalchemy import SQLAlchemy
@@ -95,15 +96,15 @@ def add_cafe():
     if form.validate_on_submit():
         new_cafe = Cafe(
             name=form.cafe.data,
-            location=form.location.data,
             map_url=form.map_url.data,
             img_url=form.img_url.data,
-            seats=form.seats.data,
-            coffee_price=form.coffee_price.data,
+            location=form.location.data,
             has_sockets=form.has_sockets.data == "True",
             has_toilet=form.has_toilet.data == "True",
             has_wifi=form.has_wifi.data == "True",
             can_take_calls=form.can_take_calls.data == "True",
+            seats=form.seats.data,
+            coffee_price=form.coffee_price.data,
         )
         db.session.add(new_cafe)
         db.session.commit()
@@ -112,9 +113,16 @@ def add_cafe():
 
 
 @app.route('/cafes')
-def cafes():
+def cafes() -> str:
     all_cafes = db.session.execute(db.select(Cafe).order_by(Cafe.name)).scalars().all()
     return render_template('cafes.html', cafes=all_cafes)
+
+@app.route("/all")
+def get_all_cafes() -> Response:
+    result = db.session.execute(db.select(Cafe).order_by(Cafe.name))
+    all_cafes = result.scalars().all()
+    #This uses a List Comprehension but you could also split it into 3 lines.
+    return jsonify(cafes=[cafe.to_dict() for cafe in all_cafes])
 
 @app.route('/random')
 def random_cafe() -> Response | tuple[Response, int]:
@@ -133,11 +141,101 @@ def get_cafe_at_location():
     query_location = request.args.get("loc")
     result = db.session.execute(db.select(Cafe).where(Cafe.location == query_location))
     # Note, this may get more than one cafe per location
-    all_cafes = result.scalars().all()
+    all_cafes: random.Sequence[random.Any] = result.scalars().all()
     if all_cafes:
         return jsonify(cafes=[cafe.to_dict() for cafe in all_cafes])
     else:
         return jsonify(error={"Not Found": "Sorry, we don't have a cafe at that location."}), 404
+
+@app.route("/api/v1/cafes/add" , methods=["POST"])
+def post_new_cafe() -> tuple[Response, Literal[400]] | tuple[Response, Literal[201]] | tuple[Response, Literal[500]]:
+    # Handle both JSON and form data
+    if request.is_json:
+        # Handle JSON request
+        data = request.get_json()
+        new_cafe = Cafe(
+            name=data.get('name'),
+            map_url=data.get('map_url'),
+            img_url=data.get('img_url'),
+            location=data.get('location'),
+            has_sockets=data.get('has_sockets'),
+            has_toilet=data.get('has_toilet'),
+            has_wifi=data.get('has_wifi'),
+            can_take_calls=data.get('can_take_calls'),
+            seats=data.get('seats'),
+            coffee_price=data.get('coffee_price'),
+        )
+    else:
+        # Handle form data request
+        new_cafe = Cafe(
+            name=request.form.get('name'),
+            map_url=request.form.get('map_url'),
+            img_url=request.form.get('img_url'),
+            location=request.form.get('location'),
+            has_sockets=request.form.get('has_sockets'),
+            has_toilet=request.form.get('has_toilet'),
+            has_wifi=request.form.get('has_wifi'),
+            can_take_calls=request.form.get('can_take_calls'),
+            seats=request.form.get('seats'),
+            coffee_price=request.form.get('coffee_price'),
+        )
+    
+    # Validate required fields
+    if not new_cafe.name or not new_cafe.location:
+        return jsonify(error="Missing required fields: name and location are required"), 400
+    
+    try:
+        db.session.add(new_cafe)
+        db.session.commit()
+        return jsonify(response={"success": "Successfully added the new cafe."}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error=f"Failed to add cafe: {str(e)}"), 500
+
+
+@app.route("/api/v1/cafes/<int:cafe_id>", methods=["GET"])
+def get_cafe_by_id(cafe_id) -> Response | tuple[Response, Literal[404]]:
+    """Get a specific cafe by ID"""
+    cafe: Cafe | None = db.session.get(Cafe, cafe_id)
+    if cafe:
+        return jsonify(cafe=cafe.to_dict())
+    else:
+        return jsonify(error={"Not Found": "Sorry, a cafe with that id was not found in the database."}), 404
+
+
+
+# Updating the price of a cafe based on a particular id:
+# http://127.0.0.1:5000/api/v1/cafes/update-price/CAFE_ID?new_price=£5.67
+@app.route("/api/v1/cafes/update-price/<int:cafe_id>", methods=["PATCH"])
+def patch_new_price(cafe_id) -> tuple[Response, Literal[200]] | tuple[Response, Literal[404]]:
+    new_price: str | None = request.args.get("new_price")
+    cafe: Cafe | None = db.session.get(entity=Cafe, ident=cafe_id)  # Returns None if cafe_id is not found
+    if cafe:
+        cafe.coffee_price = new_price
+        db.session.commit()
+        return jsonify(response={"success": "Successfully updated the price."}), 200
+    else:
+        return jsonify(error={"Not Found": "Sorry a cafe with that id was not found in the database."}), 404
+
+@app.route("/api/v1/cafes/<int:cafe_id>", methods=["DELETE"])
+def delete_cafe(cafe_id) -> tuple[Response, Literal[403]] | tuple[Response, Literal[404]] | Response | tuple[Response, Literal[500]]:
+    """Delete a cafe"""
+    api_key: str | None = request.args.get("api-key")
+    if api_key != "TopSecretAPIKey":
+        return jsonify(error={"Forbidden": "Sorry, that's not allowed. Make sure you have the correct api_key."}), 403
+    
+    cafe: Cafe | None = db.session.get(Cafe, cafe_id)
+    if not cafe:
+        return jsonify(error={"Not Found": "Sorry, a cafe with that id was not found in the database."}), 404
+    
+    try:
+        db.session.delete(cafe)
+        db.session.commit()
+        return jsonify(response={"success": "Successfully deleted the cafe from the database."})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(error=f"Failed to delete cafe: {str(e)}"), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
