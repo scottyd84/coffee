@@ -118,7 +118,7 @@ def cafes() -> str:
     return render_template('cafes.html', cafes=all_cafes)
 
 @app.route("/all")
-def get_all_cafes() -> Response:
+def get_all_cafes():
     result = db.session.execute(db.select(Cafe).order_by(Cafe.name))
     all_cafes = result.scalars().all()
     #This uses a List Comprehension but you could also split it into 3 lines.
@@ -217,25 +217,20 @@ def patch_new_price(cafe_id) -> tuple[Response, Literal[200]] | tuple[Response, 
     else:
         return jsonify(error={"Not Found": "Sorry a cafe with that id was not found in the database."}), 404
 
-@app.route("/api/v1/cafes/<int:cafe_id>", methods=["DELETE"])
-def delete_cafe(cafe_id) -> tuple[Response, Literal[403]] | tuple[Response, Literal[404]] | Response | tuple[Response, Literal[500]]:
-    """Delete a cafe"""
-    api_key: str | None = request.args.get("api-key")
-    if api_key != "TopSecretAPIKey":
+# Deletes a cafe with a particular id. Change the request type to "Delete" in Postman
+@app.route("/api/v1/cafes/report-closed/<int:cafe_id>", methods=["DELETE"])
+def delete_cafe(cafe_id) -> tuple[Response, Literal[200]] | tuple[Response, Literal[404]] | tuple[Response, Literal[403]]:
+    api_key = request.args.get("api-key")
+    if api_key == "TopSecretAPIKey":
+        cafe_to_close = db.session.get(Cafe, cafe_id)
+        if cafe_to_close:
+            db.session.delete(cafe_to_close)
+            db.session.commit()
+            return jsonify(response={"success": "Successfully deleted the cafe."}), 200
+        else:
+            return jsonify(error={"Not Found": "Sorry, a cafe with that id was not found in the database."}), 404
+    else:
         return jsonify(error={"Forbidden": "Sorry, that's not allowed. Make sure you have the correct api_key."}), 403
-    
-    cafe: Cafe | None = db.session.get(Cafe, cafe_id)
-    if not cafe:
-        return jsonify(error={"Not Found": "Sorry, a cafe with that id was not found in the database."}), 404
-    
-    try:
-        db.session.delete(cafe)
-        db.session.commit()
-        return jsonify(response={"success": "Successfully deleted the cafe from the database."})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify(error=f"Failed to delete cafe: {str(e)}"), 500
-
 
 if __name__ == '__main__':
     app.run(debug=True)
