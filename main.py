@@ -8,12 +8,17 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, SelectField
 from wtforms.validators import DataRequired, URL
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column 
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Initialize Flask app and configurations
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
+
+# Honour nginx's X-Forwarded-* headers when served behind the reverse proxy, so
+# that url_for()/redirects stay under the /coffee sub-path (X-Forwarded-Prefix).
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Initialize Bootstrap
 Bootstrap5(app)
